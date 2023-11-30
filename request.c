@@ -109,7 +109,7 @@ struct request receive_into_dynamic_buffer(int connfd)
 
     struct request return_struct;
     return_struct.text = sv_from_cstr(ret);
-    return_struct.header = sv_substr(0, sv_idx_long(SV_Lit("\n\n"), header), header);
+    return_struct.header = sv_substr(0, sv_idx_long(SV_Lit("\n\n"), return_struct.text), return_struct.text);
 
     return return_struct;
 }

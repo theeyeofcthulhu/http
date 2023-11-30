@@ -615,6 +615,8 @@ int main(int argc, char **argv)
             if (sv_eq(buf, SV_Lit("/upload"))) {
                 puts("Client wants to upload");
 
+                D(read_view.len);
+
                 bool boundary_found = false;
                 sv line_buf;
                 sv boundary;
