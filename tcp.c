@@ -646,6 +646,7 @@ int main(int argc, char **argv)
                     printf("Filename: "SV_Fmt"\n", SV_Arg(fn));
 
                     sv_chop_delim('\n', &content, &buf);
+                    sv_chop_delim('\n', &content, &buf);
 
                     size_t close = sv_idx_long(boundary, content);
                     if (close == SV_END_POS) {
