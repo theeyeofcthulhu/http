@@ -79,6 +79,8 @@ void send_json_dir(int connfd, const char *dirname)
         exit(1);
     }
 
+    closedir(stream);
+
     off += sprintf(json_buf + off, "\n]\n");
     puts(json_buf);
 

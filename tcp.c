@@ -270,7 +270,7 @@ int main(int argc, char **argv)
     handler_not_found_redirect = "notfound.html";
 
     register_handler(SV_Lit("GET /"), handler_get);
-    register_handler(SV_Lit("GET /quit.html"), handler_get);
+    register_handler(SV_Lit("GET /quit"), handler_get);
     register_handler(SV_Lit("GET /mute"), handler_get);
     register_handler(SV_Lit("GET /Download/contents"), handler_get);
     register_handler(SV_Lit("GET /"), handler_get);
