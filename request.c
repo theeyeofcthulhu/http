@@ -7,8 +7,6 @@
 
 #include "request.h"
 
-sv get_field_value(sv txt, sv field);
-
 sv get_field_value(sv txt, sv field)
 {
     sv ret = { 0 };
@@ -59,8 +57,7 @@ struct request receive_into_dynamic_buffer(int connfd)
     sv text_sv = sv_from_data(ret, full_msg_size);
 
     // Read header values after first batch
-    sv header = text_sv;
-    header = sv_substr(0, sv_idx_long(SV_Lit("\n\r\n"), header), header);
+    sv header = sv_substr(0, sv_idx_long(SV_Lit("\n\r\n"), text_sv), text_sv);
 
     // If there is 'Content-Length', wait until all of it was read
     sv l = get_field_value(header, SV_Lit("Content-Length"));
@@ -89,16 +86,10 @@ struct request receive_into_dynamic_buffer(int connfd)
         }
     }
 
-    // remove_carriage_return(ret, header.len);
-
     struct request return_struct;
-    // NOTE: Overshoot with len after carriage return
-    // Fix this or depend on responsible caller? (We own
-    // the memory anyway)
-    return_struct.text = sv_from_data(ret, full_msg_size);
-    return_struct.header = sv_substr(0, sv_idx_long(SV_Lit("\n\r\n"), return_struct.text), return_struct.text);
+    return_struct.text = text_sv;
+    return_struct.header = header;
     return_struct.data = sv_from_data(ret + start_of_message, to_read);
 
     return return_struct;
 }
-
