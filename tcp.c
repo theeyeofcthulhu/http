@@ -615,71 +615,61 @@ int main(int argc, char **argv)
             if (sv_eq(buf, SV_Lit("/upload"))) {
                 puts("Client wants to upload");
 
-                D(read_view.len);
+                sv boundary = get_field_value(rq.header, SV_Lit("Content-Type"));
+                sv content_type;
+                sv_chop_delim('=', &boundary, &content_type);
+                printf("Boundary: "SV_Fmt"\n", SV_Arg(boundary));
 
-                bool boundary_found = false;
-                sv line_buf;
-                sv boundary;
-                while (sv_chop_delim('\n', &read_view, &buf)) {
-                    if (!boundary_found && sv_starts_with(SV_Lit("Content-Type:"), buf)) {
-                        sv_chop_delim(' ', &buf, &line_buf); // Content-Type:
-                        sv_chop_delim(' ', &buf, &line_buf); // multipart/form-data
-                        printf("Content-Type: "SV_Fmt"\n", SV_Arg(line_buf));
+                sv content = rq.data;
 
-                        sv_chop_delim(' ', &buf, &boundary); // boundary=…
-                        sv_chop_delim('=', &boundary, &line_buf); // boundary=…
+                // Only expect one boundary pair
+                // Handle fields like a barbarian, but who cares
+                if (SV_Contains(boundary, content)) {
+                    puts("Found first boundary");
+                    sv_chop_delim('\n', &content, &buf);
+                    sv_chop_delim('\n', &content, &buf);
 
-                        printf("Boundary: '");
-                        printf(SV_Fmt, SV_Arg(boundary));
-                        printf("'\n");
+                    // Get filename
+                    size_t idx = sv_idx_long(SV_Lit("filename="), buf);
+                    sv fn = sv_substr(idx, SV_END_POS, buf);
 
-                        boundary_found = true;
-                    }
+                    fn = sv_substr(sv_idx('"', fn) + 1, SV_END_POS, fn);
+                    fn.len = sv_last_idx('"', fn);
 
-                    // Only expect one boundary pair
-                    // Handle fields like a barbarian, but who cares
-                    if (boundary_found && SV_Contains(boundary, buf)) {
-                        puts("Found first boundary");
-                        sv_chop_delim('\n', &read_view, &buf);
-
-                        // Get filename
-                        size_t idx = sv_idx_long(SV_Lit("filename="), buf);
-                        sv fn = sv_substr(idx, SV_END_POS, buf);
-
-                        fn = sv_substr(sv_idx('"', fn) + 1, SV_END_POS, fn);
-                        fn.len = sv_last_idx('"', fn);
-
-                        if (fn.len == 0) {
-                            puts("WARNING: Empty filename. Continuing.");
-                            break;
-                        }
-
-                        char *fn_cstr = strndup(fn.ptr, fn.len);
-
-                        printf("Filename: "SV_Fmt"\n", SV_Arg(fn));
-
-                        sv_chop_delim('\n', &read_view, &buf);
-
-                        size_t close = sv_idx_long(boundary, read_view);
-                        if (close == SV_END_POS) {
-                            puts("WARNING: No terminating boundary found");
-                        }
-
-                        sv file_content = sv_substr(0, close, read_view);
-                        file_content.len = sv_last_idx('\n', file_content) - 1; // Remove two lines not belonging to file // Remove two lines not belonging to file
-
-                        if (chdir("Upload") == -1)
-                            perror("chdir");
-                        FILE *w = fopen(fn_cstr, "w");
-                        fwrite(file_content.ptr, sizeof(char), file_content.len, w);
-                        fclose(w);
-                        if (chdir("..") == -1)
-                            perror("chdir");
-
-                        free(fn_cstr);
-
+                    if (fn.len == 0) {
+                        puts("WARNING: Empty filename. Continuing.");
                         break;
                     }
+
+                    char *fn_cstr = strndup(fn.ptr, fn.len);
+
+                    printf("Filename: "SV_Fmt"\n", SV_Arg(fn));
+
+                    sv_chop_delim('\n', &content, &buf);
+
+                    size_t close = sv_idx_long(boundary, content);
+                    if (close == SV_END_POS) {
+                        puts("WARNING: No terminating boundary found");
+                    } else {
+                        puts("Found terminating boundary.");
+                    }
+
+                    sv file_content = sv_substr(0, close, content);
+                    file_content.len = sv_last_idx('\n', file_content) - 1; // Remove two lines not belonging to file // Remove two lines not belonging to file
+
+                    if (chdir("Upload") == -1)
+                        perror("chdir");
+                    FILE *w = fopen(fn_cstr, "w");
+                    fwrite(file_content.ptr, sizeof(char), file_content.len, w);
+                    fclose(w);
+                    if (chdir("..") == -1)
+                        perror("chdir");
+
+                    printf("SUCCESS: Wrote %zu bytes to Upload/%s\n\n", file_content.len, fn_cstr);
+
+                    free(fn_cstr);
+                } else {
+                    puts("WARNING: No boundaries in payload.");
                 }
                 send_see_other(connfd);
             } else {

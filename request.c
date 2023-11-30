@@ -8,7 +8,6 @@
 #include "request.h"
 
 sv get_field_value(sv txt, sv field);
-size_t remove_carriage_return(char *str);
 
 sv get_field_value(sv txt, sv field)
 {
@@ -19,22 +18,9 @@ sv get_field_value(sv txt, sv field)
 
     sv_chopl(pos, &txt);
     sv_chop_delim(' ', &txt, &ret);
-    sv_chop_delim('\n', &txt, &ret);
+    sv_chop_delim('\r', &txt, &ret);
 
     return ret;
-}
-
-size_t remove_carriage_return(char *str)
-{
-    size_t len = 0;
-    char *dst;
-    for (dst = str; *str; str++, len++) {
-        *dst = *str;
-        if (*dst != '\r') dst++; // Overwrite the '\r' next time
-    }
-    *dst = '\0';
-
-    return len;
 }
 
 #define BUF_SZ 2048
@@ -79,11 +65,13 @@ struct request receive_into_dynamic_buffer(int connfd)
     // If there is 'Content-Length', wait until all of it was read
     sv l = get_field_value(header, SV_Lit("Content-Length"));
 
+    size_t start_of_message = 0;
+    long to_read = 0;
     if (l.len) {
-        size_t start_of_message = sv_idx_long(SV_Lit("\n\r\n"), text_sv) + 3;
-        size_t message_received = full_msg_size - start_of_message;
+        start_of_message = sv_idx_long(SV_Lit("\n\r\n"), text_sv) + 3;
+        long message_received = full_msg_size - start_of_message;
 
-        long to_read = strtol(l.ptr, NULL, 10);
+        to_read = strtol(l.ptr, NULL, 10);
 
         if (message_received < to_read) {
             size_t bytes_read = 0;
@@ -101,15 +89,15 @@ struct request receive_into_dynamic_buffer(int connfd)
         }
     }
 
-    // Make ret a cstr and remove all '\r's
-    ret = realloc(ret, full_msg_size + 1);
-    ret[full_msg_size] = '\0';
-
-    remove_carriage_return(ret);
+    // remove_carriage_return(ret, header.len);
 
     struct request return_struct;
-    return_struct.text = sv_from_cstr(ret);
-    return_struct.header = sv_substr(0, sv_idx_long(SV_Lit("\n\n"), return_struct.text), return_struct.text);
+    // NOTE: Overshoot with len after carriage return
+    // Fix this or depend on responsible caller? (We own
+    // the memory anyway)
+    return_struct.text = sv_from_data(ret, full_msg_size);
+    return_struct.header = sv_substr(0, sv_idx_long(SV_Lit("\n\r\n"), return_struct.text), return_struct.text);
+    return_struct.data = sv_from_data(ret + start_of_message, to_read);
 
     return return_struct;
 }
