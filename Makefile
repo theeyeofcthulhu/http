@@ -2,7 +2,7 @@ CC=gcc
 CFLAGS=-Wall -Wextra -std=c11 -pedantic -ggdb -D_POSIX_C_SOURCE=20080901
 LDLIBS=
 
-SRC=tcp.c
+SRC=tcp.c request.c
 OBJ=$(SRC:.c=.o)
 EXE=tcp
 

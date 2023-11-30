@@ -16,10 +16,12 @@
 #include <errno.h>
 #include <assert.h>
 
+#include <dbg.h>
+
 #define SV_IMPLEMENTATION
 #include "sv.h"
 
-#include <dbg.h>
+#include "request.h"
 
 #define BUF_SZ 2048
 
@@ -476,100 +478,14 @@ void resolve_file(int connfd, sv fn)
     return;
 
 not_found:
-    msg_len = sprintf(buf, "HTTP/1.1 404 Not Found\r\n"
+    msg_len = sprintf(buf, "HTTP/1.1 303 See Other\r\n"
                            "Server: MyTCP\r\n"
+                           "Location: /notfound.html\r\n"
                            "Connection: Closed\r\n");
     printf("Responding:\n%.*s", msg_len, buf);
     send(connfd, buf, msg_len, 0);
 
     return;
-}
-
-sv get_field_value(sv txt, sv field)
-{
-    sv ret = { 0 };
-    size_t pos = sv_idx_long(field, txt);
-    if (pos == SV_END_POS)
-        return ret;
-
-    sv_chopl(pos, &txt);
-    sv_chop_delim(' ', &txt, &ret);
-    sv_chop_delim('\n', &txt, &ret);
-
-    return ret;
-}
-
-size_t remove_carriage_return(char *str)
-{
-    size_t len = 0;
-    char *dst;
-    for (dst = str; *str; str++, len++) {
-        *dst = *str;
-        if (*dst != '\r') dst++; // Overwrite the '\r' next time
-    }
-    *dst = '\0';
-
-    return len;
-}
-
-sv receive_into_dynamic_buffer(int connfd)
-{
-    char buf[BUF_SZ];
-    char *ret = NULL;
-
-    size_t received = recv(connfd, buf, sizeof(buf), 0);
-    // printf("Buffer is %zu bytes; msg is %zu bytes\n", sizeof(readbuf), received);
-
-    // If the the full message was not read, read the whole thing into dynamic
-    // memory
-    size_t full_msg_size = received;
-    if (received == sizeof(buf)) {
-        ret = malloc(full_msg_size);
-        memcpy(ret, buf, received);
-
-        for (char *i = ret + received; received == sizeof(buf); i += received) {
-            received = recv(connfd, buf, sizeof(buf), 0);
-
-            full_msg_size += received;
-            ret = realloc(ret, full_msg_size);
-
-            i = ret + full_msg_size - received; // Important reassignment: realloc possibly moves ret
-
-            memcpy(i, buf, received);
-        }
-    } else {
-        ret = malloc(received * sizeof(char));
-        strncpy(ret, buf, received);
-    }
-
-    // If there is 'Content-Length', wait until all of it was read
-    sv text_sv = sv_from_data(ret, full_msg_size);
-    sv l = get_field_value(text_sv, SV_Lit("Content-Length:"));
-    SV_Dbg(l);
-
-    if (l.len) {
-        size_t start_of_message = sv_idx_long(SV_Lit("\n\r\n"), text_sv) + 3;
-        size_t message_received = full_msg_size - start_of_message;
-
-        long to_read = strtol(l.ptr, NULL, 10);
-
-        if (message_received < to_read) {
-            size_t bytes_read = 0;
-            for (char *i = ret + full_msg_size; message_received < to_read; i += bytes_read, message_received += bytes_read) {
-                bytes_read = recv(connfd, buf, sizeof(buf), 0);
-                full_msg_size += bytes_read;
-
-                ret = realloc(ret, full_msg_size);
-                i = ret + full_msg_size - bytes_read;
-
-                memcpy(i, buf, bytes_read);
-            }
-        }
-    }
-
-    remove_carriage_return(ret);
-
-    return sv_from_data(ret, full_msg_size);
 }
 
 int main(int argc, char **argv)
@@ -655,9 +571,11 @@ int main(int argc, char **argv)
 
         puts("Accepted.");
 
-        base_read = receive_into_dynamic_buffer(connfd);
+        struct request rq = receive_into_dynamic_buffer(connfd);
+        base_read = rq.text;
+
         read_view = base_read;
-        printf("Client said: "SV_Fmt"\n", SV_Arg(read_view));
+        printf("Client sent header: "SV_Fmt"\n", SV_Arg(rq.header));
 
         sv_chop_delim(' ', &read_view, &buf);
 
@@ -735,7 +653,6 @@ int main(int argc, char **argv)
                         }
 
                         char *fn_cstr = strndup(fn.ptr, fn.len);
-                        char *boundary_cstr = strndup(boundary.ptr, boundary.len + 1);
 
                         printf("Filename: "SV_Fmt"\n", SV_Arg(fn));
 
@@ -758,7 +675,6 @@ int main(int argc, char **argv)
                             perror("chdir");
 
                         free(fn_cstr);
-                        free(boundary_cstr);
 
                         break;
                     }
