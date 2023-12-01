@@ -27,20 +27,24 @@ struct request receive_into_dynamic_buffer(int connfd)
     char buf[BUF_SZ];
     char *ret = NULL;
 
-    size_t received = recv(connfd, buf, sizeof(buf), 0);
+    ssize_t received = recv(connfd, buf, sizeof(buf), 0);
     // printf("Buffer is %zu bytes; msg is %zu bytes\n", sizeof(readbuf), received);
 
     // If the the full message was not read, read the whole thing into dynamic
     // memory
-    size_t full_msg_size = received;
+    ssize_t full_msg_size = received;
     if (received == sizeof(buf)) {
         ret = malloc(full_msg_size);
         memcpy(ret, buf, received);
 
         for (char *i = ret + received; received == sizeof(buf); i += received) {
-            size_t old_size = full_msg_size;
+            ssize_t old_size = full_msg_size;
 
-            received = recv(connfd, buf, sizeof(buf), 0);
+            received = recv(connfd, buf, sizeof(buf), MSG_DONTWAIT);
+            if (received == -1) {
+                perror("recv");
+                return (struct request) { 0 };
+            }
 
             full_msg_size += received;
             ret = realloc(ret, full_msg_size);
@@ -56,13 +60,15 @@ struct request receive_into_dynamic_buffer(int connfd)
 
     sv text_sv = sv_from_data(ret, full_msg_size);
 
+    SV_Dbg(text_sv);
+
     // Read header values after first batch
     sv header = sv_substr(0, sv_idx_long(SV_Lit("\n\r\n"), text_sv), text_sv);
 
     // If there is 'Content-Length', wait until all of it was read
     sv l = get_field_value(header, SV_Lit("Content-Length"));
 
-    size_t start_of_message = 0;
+    ssize_t start_of_message = 0;
     long to_read = 0;
     if (l.len) {
         start_of_message = sv_idx_long(SV_Lit("\n\r\n"), text_sv) + 3;
@@ -71,9 +77,9 @@ struct request receive_into_dynamic_buffer(int connfd)
         to_read = strtol(l.ptr, NULL, 10);
 
         if (message_received < to_read) {
-            size_t bytes_read = 0;
+            ssize_t bytes_read = 0;
             for (char *i = ret + full_msg_size; message_received < to_read; i += bytes_read, message_received += bytes_read) {
-                size_t old_size = full_msg_size;
+                ssize_t old_size = full_msg_size;
 
                 bytes_read = recv(connfd, buf, sizeof(buf), 0);
                 full_msg_size += bytes_read;
@@ -86,9 +92,11 @@ struct request receive_into_dynamic_buffer(int connfd)
         }
     }
 
+    SV_Dbg(text_sv);
+
     struct request return_struct;
-    return_struct.text = text_sv;
-    return_struct.header = header;
+    return_struct.text = sv_from_data(ret, full_msg_size);
+    return_struct.header = sv_from_data(ret, header.len);
     return_struct.data = sv_from_data(ret + start_of_message, to_read);
 
     return return_struct;
