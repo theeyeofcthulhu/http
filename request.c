@@ -60,8 +60,6 @@ struct request receive_into_dynamic_buffer(int connfd)
 
     sv text_sv = sv_from_data(ret, full_msg_size);
 
-    SV_Dbg(text_sv);
-
     // Read header values after first batch
     sv header = sv_substr(0, sv_idx_long(SV_Lit("\n\r\n"), text_sv), text_sv);
 
@@ -91,8 +89,6 @@ struct request receive_into_dynamic_buffer(int connfd)
             }
         }
     }
-
-    SV_Dbg(text_sv);
 
     struct request return_struct;
     return_struct.text = sv_from_data(ret, full_msg_size);
