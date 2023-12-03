@@ -81,6 +81,7 @@ void get_local_ip(char *out)
     }
 
     freeifaddrs(ifaddr);
+    fclose(f);
 }
 
 void handler_get(struct request req, int connfd)
