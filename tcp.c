@@ -9,12 +9,15 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/sendfile.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
 #include <assert.h>
+#include <poll.h>
+#include <fcntl.h>
 
 #include <dbg.h>
 
@@ -223,6 +226,14 @@ int main(int argc, char **argv)
 
     puts("Socket created.");
 
+    struct timeval tv;
+    tv.tv_sec = 2;
+    tv.tv_usec = 0 * 500 * 1000;
+    if ((setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv)) == -1) {
+        perror("setsockopt");
+        return 1;
+    }
+
     memset(&servaddr, '\0', sizeof(servaddr));
 
     servaddr.sin_family = AF_INET;
@@ -274,12 +285,14 @@ int main(int argc, char **argv)
     register_handler(SV_Lit("GET /quit"), handler_get);
     register_handler(SV_Lit("GET /mute"), handler_get);
     register_handler(SV_Lit("GET /Download/contents"), handler_get);
-    register_handler(SV_Lit("GET /"), handler_get);
 
     register_handler(SV_Lit("POST /upload"), handler_post);
 
     while (running) {
         if ((connfd = accept(sockfd, (struct sockaddr *)&cli, &len)) == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                continue;
+
             perror("accept");
             return 1;
         }

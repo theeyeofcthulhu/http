@@ -178,6 +178,9 @@ not_found:
 
 void handle_request(struct request rq, int connfd)
 {
+    if (rq.text.len == 0)
+        return;
+
     sv read_view, buf, base_read;
 
     base_read = rq.text;

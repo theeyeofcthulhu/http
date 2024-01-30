@@ -28,6 +28,10 @@ struct request receive_into_dynamic_buffer(int connfd)
     char *ret = NULL;
 
     ssize_t received = recv(connfd, buf, sizeof(buf), 0);
+    if (received == -1) {
+        perror("recv");
+        return (struct request) { 0 };
+    }
     // printf("Buffer is %zu bytes; msg is %zu bytes\n", sizeof(readbuf), received);
 
     // If the the full message was not read, read the whole thing into dynamic
